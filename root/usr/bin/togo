@@ -1,7 +1,8 @@
-#!/usr/bin/python
+#!/usr/bin/python2
 
 import compileall
 import exceptions
+import fileinput
 import logging
 import optparse
 import os
@@ -20,7 +21,7 @@ from argparse import RawTextHelpFormatter
 try:
     from sqlobject import *
 except ImportError:
-    raise exceptions.Exception("'python-sqlobject' package not installed.")
+    raise exceptions.Exception("'python2-sqlobject' package not installed.")
 
 # Ensure 'date' uses english names for months etc.
 os.environ['LC_ALL'] = "C"
@@ -45,7 +46,7 @@ class Application:
     # Set up some class-wide defaults
     path_root = os.path.abspath(os.path.curdir)
     path_database = os.path.join(path_root, APPLICATION_DATABASE_NAME)
-    preference_path_database = os.path.join(os.path.expanduser('~/.togo'), 'preferences.db')
+    path_preference_database = os.path.join(os.path.expanduser('~/.togo'), 'preferences.db')
 
     def __init__(self):
         """ Application initialization """
@@ -118,6 +119,10 @@ class Application:
         p_build_package = sp_build.add_parser('package', help="Build the package")
         p_build_package.add_argument('-s', metavar='specfile', dest="build_spec",
                                  help="Specify a spec file")
+        p_build_package.add_argument('-v', '--version', metavar='version',
+                                     dest="build_version", help="Specify build version")
+        p_build_package.add_argument('-r', '--release', metavar='release',
+                                     dest="build_release", help="Specify build release")        
         p_build_package.add_argument('--nodeps', dest="build_nodeps", action="store_true",
                                          help="Disable automatic dependency generation")        
         
@@ -143,23 +148,33 @@ class Application:
                               help="Specify directories to exclude")
         
         # Create the file flag parser and subparser
-        p_file_flag = sp_file.add_parser('flag', help="Flag commands")
+        p_file_flag = sp_file.add_parser('flag', help="Flag files")
         sp_file_flag = p_file_flag.add_subparsers(dest="sp_file_flag")
 
         # Create the file flag normal parser and subparser
-        p_file_flag_normal = sp_file_flag.add_parser('normal', help="Flag file(s) as normal")
-        p_file_flag_normal.add_argument('file_flag_normal_files', metavar="files", 
+        p_file_flag_normal = sp_file_flag.add_parser('normal', help="DEPRECATED: Use 'togo file unflag <file(s)>'")
+        p_file_flag_normal.add_argument('file_flag_files', metavar="files", 
                                  nargs='*', help="Specify files to flag")
         
         # Create the file flag config parser and subparser
         p_file_flag_config = sp_file_flag.add_parser('config', help="Flag file(s) as %%config")
-        p_file_flag_config.add_argument('file_flag_config_files', metavar="files", 
+        p_file_flag_config.add_argument('file_flag_files', metavar="files", 
                                  nargs='*', help="Specify files to flag")
+        
+        # Create the file flag config(noreplace) parser and subparser
+        p_file_flag_config = sp_file_flag.add_parser('config-nr', help="Flag file(s) as %%config(noreplace)")
+        p_file_flag_config.add_argument('file_flag_files', metavar="files", 
+            nargs='*', help="Specify files to flag")        
         
         # Create the file flag doc parser and subparser
         p_file_flag_doc = sp_file_flag.add_parser('doc', help="Flag file(s) as %%doc")
-        p_file_flag_doc.add_argument('file_flag_doc_files', metavar="files", 
+        p_file_flag_doc.add_argument('file_flag_files', metavar="files", 
                                  nargs='*', help="Specify files to flag")
+        
+        # Create the file unflag parser
+        p_file_unflag = sp_file.add_parser('unflag', help="Unflag files")
+        p_file_unflag.add_argument('file_unflag_files', metavar="files",
+                                   nargs='*', help="Specify files to unflag")
         
         # Create the file database parser and subparser
         p_file_database = sp_file.add_parser('database', help="File database commands")
@@ -232,6 +247,11 @@ class Application:
             
             # If building the entire package
             elif (args.sp_build == 'package'):
+                if (args.build_version):
+                    self.replaceInSpecHeader("Version", args.build_version)
+                if (args.build_release):
+                    self.replaceInSpecHeader("Release", args.build_release)
+
                 if (args.build_spec):
                     self.generateMetadata(args.build_spec)
                 else:
@@ -241,6 +261,7 @@ class Application:
                     disable_dependency_generation = True
                 else:
                     disable_dependency_generation = False
+                    
                 self.buildPackage(disable_dependency_generation)
             
             # If no options are specified
@@ -261,8 +282,11 @@ class Application:
             # If we're adding files
             elif (args.sp_file == 'include'):
                 self.updateFileDatabase()
-                for f in args.file_include_files:
-                    self.includeItem(f)
+                if (args.file_include_files):
+                    for f in args.file_include_files:
+                        self.includeItem(f)
+                else:
+                    p_file_include.print_help()
             
             # If we're removing files
             elif (args.sp_file == 'exclude'):
@@ -275,16 +299,31 @@ class Application:
             
             # If we're flagging files
             elif (args.sp_file == 'flag'):
+                self.verifyDirectiveData()
                 self.updateFileDatabase()
-                if (args.sp_file_flag == 'normal'):
-                    for f in args.file_flag_normal_files:
-                        self.flagItemNormal(f)
-                elif (args.sp_file_flag == 'config'):
-                    for f in args.file_flag_config_files:
-                        self.flagItemConfig(f)
-                elif (args.sp_file_flag == 'doc'):
-                    for f in args.file_flag_doc_files:
-                        self.flagItemDoc(f)
+                if (args.file_flag_files):
+                    if (args.sp_file_flag == 'normal'):
+                        for f in args.file_flag_files:
+                            self.flagItemNormal(f)
+                    elif (args.sp_file_flag == 'config'):
+                        for f in args.file_flag_files:
+                            self.flagItemConfig(f)
+                    elif (args.sp_file_flag == 'config-nr'):
+                        for f in args.file_flag_files:
+                            self.flagItemConfigNoReplace(f)
+                    elif (args.sp_file_flag == 'doc'):
+                        for f in args.file_flag_files:
+                            self.flagItemDoc(f)
+                else:
+                    p_file_flag.print_help()
+                        
+            # If we're unflagging files
+            elif (args.sp_file == 'unflag'):
+                if (args.file_unflag_files):
+                    for f in args.file_unflag_files:
+                        self.unflagItem(f)
+                else:
+                    p_file_unflag.print_help()
             
             # If we're messing with the file database
             elif (args.sp_file == 'database'):
@@ -329,12 +368,12 @@ class Application:
         
         # Check to see if the preference database exists
         #  If it doesn't, set it to be created
-        Dir(os.path.split(self.preference_path_database)[0])
-        if not (os.path.exists(self.preference_path_database)):
+        Dir(os.path.split(self.path_preference_database)[0])
+        if not (os.path.exists(self.path_preference_database)):
             initialize = True
         
         # Set up the connection information for the sql object
-        connection_string = 'sqlite://%s' % (self.preference_path_database)
+        connection_string = 'sqlite://%s' % (self.path_preference_database)
         self.connection = connectionForURI(connection_string)
         sqlhub.processConnection = self.connection
         
@@ -375,7 +414,7 @@ class Application:
         self.connection = connectionForURI(connection_string)
         sqlhub.processConnection = self.connection
         self.transaction = self.connection.transaction()
-
+    
     def initializeDatabase(self):
         """ Initializes the package database """
         self.connectToDatabase()
@@ -405,16 +444,33 @@ class Application:
                     package_path_spec=p.package_path_spec,
                     package_path_meta=p.package_path_meta,
                     package_path_rpms=p.package_path_rpms)
+        
+        # Verify/setup initial data values
+        self.verifyDirectiveData()
 
-        # Initialize the directive types
-        Directive(name="%config",
-                  description="Configuration files.")
-        Directive(name="%dir",
-                  description="Directories.")
-        Directive(name="%doc",
-                  description="Documentation.")
-        Directive(name="%docdir",
-                  description="Documentation directories.")
+    def verifyDirectiveData(self):
+        """ Check the database for inconsistencies and fix any found issues """
+        self.connectToDatabase()
+        
+        ## Verify the presence of the directive types
+        # Set up the desired directives
+        directives = [{'name': '%config',
+                       'description': "Configuration files."},
+                      {'name': '%config(noreplace)',
+                       'description': "Configuration files w/ noreplace modifier."},
+                      {'name': '%dir',
+                       'description': 'Directories.'},
+                      {'name': '%doc',
+                       'description': 'Documentation'},
+                      {'name': '%docdir',
+                       'description': 'Documentation directories.'}]
+
+        # Iterate through the directives and add the missing ones
+        for directive in directives:
+            log.debug("Searching for: %s" % directive)
+            if not (list(Directive.selectBy(name=directive['name']))):
+                log.debug("  Adding directive to database: %s" % (directive['name']))
+                Directive(name=directive['name'], description=directive['description'])
 
     def createProject(self, name):
         """ Creates a new package and package database """
@@ -454,7 +510,7 @@ class Application:
             log.info("  Getting current project name...")
             try:
                 p = Package.get(1)
-            except:
+            except SQLObjectNotFound:
                 log.error("  Could not find existing Togo package information for this project.")
             else:
                 
@@ -468,11 +524,9 @@ class Application:
                 p.package_name = name
                 
                 # Update the spec file
-                log.info("  Updating project name in './spec/header' file...")
-                os.system("sed -i -- 's/Name: %s/Name: %s/g' %s" % (project_name_old,
-                                                        project_name_new,
-                                                        'spec/header'))
-                
+                log.info("  Updating project name in '%s/header' file..." % p.package_path_spec)
+                self.replaceInSpecHeader("Name", project_name_new)
+               
                 # Update the project directory name
                 log.info("  Renaming the current working directory...")
                 os.rename(project_path_old, project_path_new)
@@ -481,6 +535,34 @@ class Application:
                 log.info("")
                 log.info("  Rename complete; type 'cd .' to refresh your current working directory.")
                 log.info("")
+    
+    def replaceInSpecHeader(self, variable, value):
+        """ Replace a variable value within the spec/header file """
+        
+        try:
+            p = Package.get(1)
+        except SQLObjectNotFound:
+            log.error("  Could not find existing Togo package information for this project.")
+        else:
+            header = open('%s/header' % (p.package_path_spec), 'r')
+            header_data = []
+            for line in header.readlines():
+                header_data.append(line)
+            header.close()
+                
+            # Search for and update the specified line
+            index = 0
+            for line in header_data:
+                if not (line.find(variable)):
+                    new_line = "%s: %s\n" % (variable, value)
+                    header_data[index] = new_line
+                    exit
+                index += 1            
+                    
+            # Write the new header data back out to file
+            header = file('%s/header' % (p.package_path_spec), 'w')
+            header.writelines(header_data)
+            header.close()
 
     def generateSpec(self, spec_file='generated.spec'):
         """ Generates a spec file by the given name """
@@ -516,6 +598,10 @@ class Application:
             sys.exit(2)
         else:
             self.transaction.commit()
+            
+    def listFiles(self):
+        p = Package.get(1)
+        p.listFiles()    
 
     def includeItem(self, item):
         p = Package.get(1)
@@ -526,6 +612,7 @@ class Application:
         p.excludeItem(item)
     
     def flagItemNormal(self, item):
+        log.info("DEPRECATED: Please use 'togo file unflag <file(s)>")
         p = Package.get(1)
         p.unflagItem(item)
     
@@ -533,18 +620,25 @@ class Application:
         p = Package.get(1)
         p.flagItem(item, "%config")
     
+    def flagItemConfigNoReplace(self, item):
+        p = Package.get(1)
+        p.flagItem(item, "%config(noreplace)")
+    
     def flagItemDoc(self, item):
         p = Package.get(1)
         p.flagItem(item, "%doc")
-
-    def listFiles(self):
+    
+    def unflagItem(self, item):
         p = Package.get(1)
-        p.listFiles()
+        p.unflagItem(item)
 
     def clearAllFlags(self):
         p = Package.get(1)
         p.clearAllFlags()
-
+        
+    def fileChown(self, user_group, item):
+        p = Package.get(1)
+        p.fileChown(user_group, item)
         
 # Define the Preference object
 class Preference(SQLObject):
@@ -566,6 +660,7 @@ class Package(SQLObject):
     spec_section_extension = ''
 
     def _init(self, *args, **keys):
+        
         SQLObject._init(self, *args, **keys)
 
         self.spec_var_name = self.package_name
@@ -834,9 +929,6 @@ class Package(SQLObject):
 
     def setUserVars(self, disable_dependency_generation=False):
         """ Sets up the ~/.rpmmacros file. """
-        import socket
-        hostname = socket.gethostname()
-        identity = os.getenv('USER')
         macros_file = os.path.expanduser('~/.rpmmacros')
         log.info('')
         log.info('Setting Up Environment Variables')
@@ -868,7 +960,7 @@ class Package(SQLObject):
         log.info('Building the RPM')
         log.info('==================================')
         spec_path = os.path.join(self.package_path_meta, 'redhat', 'SPECS', '*.spec')
-        exec_string = "time rpmbuild --define '_topdir %s' -bb %s" % (
+        exec_string = "time rpmbuild --define '_topdir %s' -ba %s" % (
             os.path.join(os.getcwd(), 'meta', 'redhat'),
             spec_path)
         log.info("")
@@ -880,7 +972,11 @@ class Package(SQLObject):
 
     def moveRPMs(self):
         rpms_path = os.path.join(self.package_path_meta, 'redhat', 'RPMS')
+        srpms_path = os.path.join(self.package_path_meta, 'redhat', 'SRPMS')
         os.system('mv -v `find %s | grep .rpm` %s &>/dev/null' % (rpms_path, self.package_path_rpms))
+        destination_srpms_path = os.path.join(self.package_path_rpms, 'src')
+        os.system('mkdir -p %s' % (destination_srpms_path))
+        os.system('mv -v `find %s | grep .rpm` %s &>/dev/null' % (srpms_path, destination_srpms_path))
         log.info('Any generated RPMs are in: %s' % (self.package_path_rpms))
     
     def getPackageFile(self, item):
@@ -939,7 +1035,7 @@ class Package(SQLObject):
                 break
     def unflagItem(self, item):
         item = self.getPackageFile(item)
-        log.debug("Unflagging '%s'..." % (item.path))
+        log.info("  Unflagging '%s'" % (item.path))
         relative_path = "%s%s" % (self.package_path_root, item.path)
         for d in item.directives:
             item.removeDirective(d)
@@ -951,13 +1047,17 @@ class Package(SQLObject):
             
     def flagItem(self, item, directive):
         item = self.getPackageFile(item)
-        log.debug("Flagging '%s' as '%s'..." % (item.path, directive))
+        log.info("  Flagging '%s' as '%s'" % (item.path, directive))
         relative_path = "%s%s" % (self.package_path_root, item.path)
         
         if (directive == "%doc"):
             if (os.path.isdir(relative_path)):
                 directive = "%docdir"
-        directive = Directive.select(Directive.q.name==directive)[0]
+        
+        try:
+            directive = Directive.select(Directive.q.name==directive)[0]
+        except:
+            raise Exception("Does not exist.")
         
         # Clear the existing flag
         for d in item.directives:

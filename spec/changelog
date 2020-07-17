@@ -1,4 +1,22 @@
 %changelog
+* Sun Oct 13 2019 Gene Reese <gene.reese@xirsix.com>
+- Modified togo to explicitly use python2
+- Modified installation script to use either the 'python2-sqlobject' rpm,
+or the 'pip2' package - 'sqlobject'
+- Updated togo package's dependencies to remove 'python-sqlobject' and 'sed'
+
+* Sun Mar 18 2018 Gene Reese <gene.reese@xirsix.com>
+- Added support for %config(noreplace) file flag
+
+* Tue Jul 25 2017 Gene Reese <gene.reese@xirsix.com>
+- Build package option will now also build the associated source RPM
+
+* Thu Oct 20 2016 Gene Reese <gene.reese@xirsix.com>
+- Minor changes to .rpmmacros in preparation of gpg signing support
+- Added command line arguments to modify build version and release
+- See 'togo build package -h' for more information
+- Removed the use of sed from Togo
+
 * Fri Sep 30 2016 Gene Reese <gene.reese@xirsix.com>
 - Minor changes to logging output
 - Added rysnc as a prerequisite for the build-togo.sh script

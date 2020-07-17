@@ -1,3 +1,5 @@
+##### Scroll down to see a super-fast example of Togo in action.
+
 If you have any questions, problems, suggestions, or just plain like the software, please email me at gene.reese@xirsix.com to let me know; I base how much work I put in on my projects off how many people find them useful.
 
 If you find Togo useful, please also consider upvoting my answer at StackOverflow to spread the word about it:
@@ -28,12 +30,12 @@ Download and install togo using whatever method is most convenient:
 
 ##### Using yum
 ```
-$ sudo yum install https://github.com/genereese/togo/releases/download/v2.3r1/togo-2.3-3.noarch.rpm
+$ sudo yum install https://github.com/genereese/togo/releases/download/v2.5r1/togo-2.5-1.noarch.rpm
 ```
 
 ##### Using dnf
 ```
-$ sudo dnf install https://github.com/genereese/togo/releases/download/v2.3r1/togo-2.3-3.noarch.rpm
+$ sudo dnf install https://github.com/genereese/togo/releases/download/v2.5r1/togo-2.5-1.noarch.rpm
 ```
 
 ##### Manual install
